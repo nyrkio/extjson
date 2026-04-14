@@ -54,13 +54,15 @@ def test_datetime_naive_rejected_on_dumps():
         dumps({"at": dt_naive})
 
 
-def test_datetime_aware_non_utc_normalized_to_utc():
-    # An aware tz-offset datetime is acceptable — serialized as UTC on the wire.
+def test_datetime_aware_non_utc_preserves_offset():
+    # An aware tz-offset datetime round-trips with its original offset on the wire.
     tz_east = datetime.timezone(datetime.timedelta(hours=3))
     dt = datetime.datetime(2026, 4, 14, 12, 0, 0, tzinfo=tz_east)
-    parsed = loads(dumps({"at": dt}))
-    assert parsed["at"] == dt  # aware comparison: same instant
-    assert parsed["at"].tzinfo == datetime.timezone.utc
+    wire = dumps({"at": dt})
+    assert "+03:00" in wire
+    parsed = loads(wire)
+    assert parsed["at"] == dt  # same instant
+    assert parsed["at"].utcoffset() == datetime.timedelta(hours=3)  # offset preserved
 
 
 def test_long_marker_for_large_ints():

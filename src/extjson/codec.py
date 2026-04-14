@@ -28,9 +28,15 @@ class _DateTimeAdapter:
                 "refusing to serialize naive datetime. Use extjson.utcnow() or "
                 "extjson.to_utc(dt) to produce an aware value at the call site."
             )
-        # Normalize to UTC on the wire so comparisons are reliable downstream.
-        dt = dt.astimezone(datetime.timezone.utc)
-        return {"$date": dt.isoformat()}
+        # Preserve the caller's offset on the wire. ISO-8601 can't encode zone
+        # identity (e.g. "Europe/Helsinki") — only the offset — but that's all
+        # a round-trip needs. Callers who want UTC canonicalization should do
+        # it explicitly (extjson.to_utc) before serializing.
+        s = dt.isoformat()
+        # Use 'Z' for zero offset to match MongoDB relaxed Extended JSON.
+        if s.endswith("+00:00"):
+            s = s[:-6] + "Z"
+        return {"$date": s}
 
     @staticmethod
     def from_json(obj):
@@ -42,7 +48,7 @@ class _DateTimeAdapter:
             raise NaiveDatetimeError(
                 f"$date wire value {obj!r} carries no timezone offset"
             )
-        return dt.astimezone(datetime.timezone.utc)
+        return dt
 
 
 class _LongAdapter:
