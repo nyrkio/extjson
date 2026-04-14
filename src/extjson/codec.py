@@ -3,6 +3,7 @@ pluggable custom types via __json__ / from_json."""
 import json
 import datetime
 from .types import ObjectId
+from .dates import NaiveDatetimeError
 
 
 _TYPE_REGISTRY = {}  # {"$oid": ObjectId, "$date": datetime, ...}
@@ -23,16 +24,25 @@ class _DateTimeAdapter:
     @staticmethod
     def to_json(dt):
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=datetime.timezone.utc)
+            raise NaiveDatetimeError(
+                "refusing to serialize naive datetime. Use extjson.utcnow() or "
+                "extjson.to_utc(dt) to produce an aware value at the call site."
+            )
+        # Normalize to UTC on the wire so comparisons are reliable downstream.
+        dt = dt.astimezone(datetime.timezone.utc)
         return {"$date": dt.isoformat()}
 
     @staticmethod
     def from_json(obj):
         s = obj["$date"]
-        # Python 3.11+ handles 'Z' suffix; but normalize just in case.
         if s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        return datetime.datetime.fromisoformat(s)
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            raise NaiveDatetimeError(
+                f"$date wire value {obj!r} carries no timezone offset"
+            )
+        return dt.astimezone(datetime.timezone.utc)
 
 
 class _LongAdapter:
@@ -66,7 +76,9 @@ def _encode_default(obj):
     # datetime
     if isinstance(obj, datetime.datetime):
         return _DateTimeAdapter.to_json(obj)
-    if isinstance(obj, datetime.date):
+    if isinstance(obj, datetime.date) and not isinstance(obj, datetime.datetime):
+        # Pure date (no time) promotes to midnight UTC — explicit, not silent, and
+        # only because a date literally cannot carry a timezone.
         return _DateTimeAdapter.to_json(datetime.datetime(obj.year, obj.month, obj.day, tzinfo=datetime.timezone.utc))
     raise TypeError(f"extjson cannot encode object of type {type(obj).__name__}")
 
@@ -105,7 +117,7 @@ def _normalize(obj):
         return _normalize(obj.__json__())
     if isinstance(obj, datetime.datetime):
         return _DateTimeAdapter.to_json(obj)
-    if isinstance(obj, datetime.date):
+    if isinstance(obj, datetime.date) and not isinstance(obj, datetime.datetime):
         return _DateTimeAdapter.to_json(datetime.datetime(obj.year, obj.month, obj.day, tzinfo=datetime.timezone.utc))
     return obj
 

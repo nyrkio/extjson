@@ -47,11 +47,20 @@ def test_datetime_round_trip_utc():
     assert parsed == {"at": dt}
 
 
-def test_datetime_naive_becomes_utc():
+def test_datetime_naive_rejected_on_dumps():
+    from extjson import NaiveDatetimeError
     dt_naive = datetime.datetime(2026, 4, 14, 12, 0, 0)
-    wire = dumps({"at": dt_naive})
-    parsed = loads(wire)
-    assert parsed["at"].tzinfo is not None
+    with pytest.raises(NaiveDatetimeError):
+        dumps({"at": dt_naive})
+
+
+def test_datetime_aware_non_utc_normalized_to_utc():
+    # An aware tz-offset datetime is acceptable — serialized as UTC on the wire.
+    tz_east = datetime.timezone(datetime.timedelta(hours=3))
+    dt = datetime.datetime(2026, 4, 14, 12, 0, 0, tzinfo=tz_east)
+    parsed = loads(dumps({"at": dt}))
+    assert parsed["at"] == dt  # aware comparison: same instant
+    assert parsed["at"].tzinfo == datetime.timezone.utc
 
 
 def test_long_marker_for_large_ints():

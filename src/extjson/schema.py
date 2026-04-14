@@ -34,7 +34,9 @@ _TYPE_CHECKERS = {
     "object": lambda v: isinstance(v, dict) or hasattr(v, "data"),
     "null": lambda v: v is None,
     "objectid": lambda v: isinstance(v, ObjectId),
-    "date": lambda v: isinstance(v, datetime.datetime),
+    # type: "date" requires a timezone-aware datetime. Naive values fail fast
+    # at the schema boundary — matches the codec's strict-aware policy.
+    "date": lambda v: isinstance(v, datetime.datetime) and v.tzinfo is not None,
 }
 
 
