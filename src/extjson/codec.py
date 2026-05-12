@@ -5,6 +5,11 @@ import datetime
 from .types import ObjectId
 from .dates import NaiveDatetimeError
 
+try:
+    from bson import ObjectId as _BsonObjectId
+except ImportError:
+    _BsonObjectId = None
+
 
 _TYPE_REGISTRY = {}  # {"$oid": ObjectId, "$date": datetime, ...}
 
@@ -79,6 +84,9 @@ def _encode_default(obj):
     # Custom type with __json__
     if hasattr(obj, "__json__"):
         return obj.__json__()
+    # bson.ObjectId from pymongo/secantusdb — same wire format as extjson.ObjectId
+    if _BsonObjectId is not None and isinstance(obj, _BsonObjectId):
+        return {"$oid": str(obj)}
     # datetime
     if isinstance(obj, datetime.datetime):
         return _DateTimeAdapter.to_json(obj)
@@ -121,6 +129,8 @@ def _normalize(obj):
         return [_normalize(v) for v in obj]
     if hasattr(obj, "__json__"):
         return _normalize(obj.__json__())
+    if _BsonObjectId is not None and isinstance(obj, _BsonObjectId):
+        return {"$oid": str(obj)}
     if isinstance(obj, datetime.datetime):
         return _DateTimeAdapter.to_json(obj)
     if isinstance(obj, datetime.date) and not isinstance(obj, datetime.datetime):
